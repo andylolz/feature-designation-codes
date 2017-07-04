@@ -1,24 +1,33 @@
-# This is a template for a Python scraper on morph.io (https://morph.io)
-# including some code snippets below that you should find helpful
+from os import environ
+import csv
 
-# import scraperwiki
-# import lxml.html
-#
-# # Read in a page
-# html = scraperwiki.scrape("http://foo.com")
-#
-# # Find something on the page using css selectors
-# root = lxml.html.fromstring(html)
-# root.cssselect("div[align='left']")
-#
-# # Write out to the sqlite database using scraperwiki library
-# scraperwiki.sqlite.save(unique_keys=['name'], data={"name": "susan", "occupation": "software developer"})
-#
-# # An arbitrary query against the database
-# scraperwiki.sql.select("* from data where 'name'='peter'")
+from bs4 import BeautifulSoup as bs
+import requests
+# hack to override sqlite database filename
+# see: https://help.morph.io/t/using-python-3-with-morph-scraperwiki-fork/148
+environ['SCRAPERWIKI_DATABASE_NAME'] = 'sqlite:///data.sqlite'
+import scraperwiki
 
-# You don't have to do things with the ScraperWiki and lxml libraries.
-# You can use whatever libraries you want: https://morph.io/documentation/python
-# All that matters is that your final data is written to an SQLite database
-# called "data.sqlite" in the current working directory which has at least a table
-# called "data".
+
+r = requests.get('http://geonames.nga.mil/namesgaz/')
+soup = bs(r.text, 'html.parser')
+selects = soup.find(id='divFeatureDesignations').find_all('select')
+
+options = soup.find(id='DesignationCode').find('select', id='lbFeatureClass').find_all('option')
+location_categories = [{
+    'code': option['value'].replace('\'', ''),
+    'name': option.text.split(' (')[0],
+} for option in options]
+
+scraperwiki.sqlite.save(['code'], location_categories, 'location_categories')
+
+locations = []
+for location_category in location_categories:
+    options = soup.find(text=location_category['name']).find_parent('div').find('select').find_all('option')
+    locations += [{
+        'category': location_category['code'],
+        'code': option.text.split(',')[0],
+        'name': option.text.split(',')[1],
+    } for option in options]
+
+scraperwiki.sqlite.save(['code'], locations, 'locations')
